@@ -1,26 +1,17 @@
+from flask import Flask, request, jsonify
+from flask_socketio import SocketIO
 import eventlet
 eventlet.monkey_patch()
 
-from flask import Flask, request, jsonify
-from flask_socketio import SocketIO
-from collections import deque, OrderedDict
+from globals import waiting_list, registered_queue, active_counters
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, async_mode='eventlet')
 
-# Variables globales partagées par l'application
-waiting_list = deque(range(1, 3001))      # Liste d'attente des numéros disponibles
-registered_queue = deque()                # File d'attente des participants inscrits via QR code
-active_counters = OrderedDict()           # Dernier numéro appelé par chaque comptoir
-
 # Importer et enregistrer le blueprint d'inscription
 from register import register_bp
 app.register_blueprint(register_bp)
-
-# --------------------------
-# Routes principales
-# --------------------------
 
 @app.route('/')
 def home():
@@ -85,7 +76,6 @@ def home():
 
 @app.route('/counter/<int:counter_id>', methods=['GET'])
 def counter_page(counter_id):
-    # Page dédiée à un comptoir avec bouton pour appeler le prochain participant inscrit
     return f"""
     <!DOCTYPE html>
     <html>
@@ -169,10 +159,7 @@ def counter_page(counter_id):
 
 @app.route('/next', methods=['POST'])
 def next_client():
-    """
-    Endpoint appelé par un comptoir pour récupérer le prochain numéro.
-    Il retire le premier numéro de la file d'attente des participants inscrits.
-    """
+    print("File actuelle:", list(registered_queue))
     data = request.get_json()
     counter = data.get('counter')
     if not counter:
@@ -193,10 +180,6 @@ def next_client():
 
 @app.route('/display', methods=['GET'])
 def display():
-    """
-    Affichage en direct des derniers numéros appelés par les comptoirs
-    et de la file d'attente des participants.
-    """
     items = list(reversed(active_counters.items()))
     html = """
     <!DOCTYPE html>
@@ -308,4 +291,4 @@ def test_emit():
     return "Événement de test émis !"
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True, use_reloader=False)
