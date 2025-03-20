@@ -6,6 +6,7 @@ from flask import Flask, request, jsonify, send_file, Blueprint, session
 from flask_socketio import SocketIO
 from collections import deque, OrderedDict
 import qrcode, io
+import random
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'  # Clé nécessaire pour utiliser les sessions
@@ -13,8 +14,8 @@ socketio = SocketIO(app, async_mode='eventlet')
 
 # Variables globales partagées
 waiting_list = deque(range(1, 3001))      # Liste d'attente des numéros disponibles
-registered_queue = deque()                # File d'attente des participants inscrits via QR code
-active_counters = OrderedDict()           # Dernier numéro appelé par chaque comptoir
+registered_queue = deque()               # File d'attente des participants inscrits via QR code
+active_counters = OrderedDict()          # Dernier numéro appelé par chaque comptoir
 
 # --- Blueprint pour l'enregistrement via QR code ---
 register_bp = Blueprint('register', __name__)
@@ -36,8 +37,15 @@ def generate_qr():
 def register():
     """
     Endpoint pour l'enregistrement via QR code.
-    Conserve le numéro en session pour que, en cas de rafraîchissement, l'utilisateur retrouve le même numéro.
+    Conserve le numéro en session pour que, en cas de rafraîchissement,
+    l'utilisateur retrouve le même numéro.
+    
+    Affiche également une image d'arrière-plan choisie aléatoirement.
     """
+    # Sélection aléatoire d'une image parmi celles de votre dossier static/
+    images = ["images.png", "images(1).png", "images.jpeg"]
+    chosen_image = random.choice(images)
+
     if 'assigned_number' in session:
         number = session['assigned_number']
     else:
@@ -73,7 +81,23 @@ def register():
                 text-align: center;
                 margin: 0;
                 padding: 50px;
+                /* 
+                   Arrière-plan : image aléatoire, ajustée en "cover" 
+                   et un fond semi-transparent par-dessus si souhaité
+                */
+                background: url('/static/{chosen_image}') no-repeat center center fixed;
+                background-size: cover;
             }}
+            /* Pour un voile transparent, on peut ajouter un pseudo-élément
+               ou un overlay en CSS. Ex.:
+               body::before {{
+                   content: "";
+                   position: fixed;
+                   top: 0; left: 0; right: 0; bottom: 0;
+                   background: rgba(255, 255, 255, 0.5); 
+                   pointer-events: none;
+               }}
+            */
             h1 {{
                 font-size: 150px; /* Numéro affiché en très grand */
                 margin-bottom: 20px;
