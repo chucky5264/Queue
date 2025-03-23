@@ -7,17 +7,16 @@ from flask_socketio import SocketIO
 from collections import deque, OrderedDict
 import qrcode, io, uuid
 
-# Génère un identifiant unique pour cette exécution de l'application.
+# Identifiant unique pour chaque exécution de l'application
 app_run_id = str(uuid.uuid4())
 
-# Configure Flask pour utiliser le dossier "sstatic" (même s'il n'est plus utilisé pour des images)
-app = Flask(__name__, static_folder='sstatic', static_url_path='/static')
+app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, async_mode='eventlet')
 
-# Variables globales partagées
+# Variables globales
 waiting_list = deque(range(1, 3001))      # Liste d'attente des numéros disponibles
-registered_queue = deque()               # File d'attente des participants inscrits
+registered_queue = deque()               # File d'attente des participants
 active_counters = OrderedDict()          # Dernier numéro appelé par chaque comptoir
 
 # --- Blueprint pour l'enregistrement ---
@@ -26,7 +25,7 @@ register_bp = Blueprint('register', __name__)
 @register_bp.route('/qr')
 def generate_qr():
     """
-    Génère un QR code pointant vers l'endpoint /register.
+    Génère un QR code pointant vers /register
     """
     url = "http://147.93.40.205:5000/register"  # Adaptez l'URL selon votre environnement
     img = qrcode.make(url)
@@ -38,8 +37,8 @@ def generate_qr():
 @register_bp.route('/register', methods=['GET'])
 def register():
     """
-    Endpoint d'enregistrement par QR.
-    Vérifie si la session contient déjà un numéro correspondant à l'exécution actuelle.
+    Enregistrement via QR code.
+    Vérifie si l'utilisateur a déjà un numéro pour cette exécution.
     Sinon, attribue un nouveau numéro et l'ajoute à la file d'attente.
     """
     if session.get('app_run_id') == app_run_id and 'assigned_number' in session:
@@ -59,6 +58,9 @@ def register():
             <head><meta charset="utf-8"><title>Aucun numéro disponible</title></head>
             <body style="text-align:center; padding:50px;">
               <h1 style="color:red;">Plus aucun numéro disponible</h1>
+              <p style="margin-top:50px; font-size:14px; color:#555;">
+                Systeme développé par Simon Guy, Directeur TI de la SRA
+              </p>
             </body>
             </html>
             """, 404
@@ -75,7 +77,6 @@ def register():
           text-align: center;
           margin: 0;
           padding: 50px;
-          background-color: #ffffff;
         }}
         h1 {{
           font-size: 150px;
@@ -92,6 +93,9 @@ def register():
     <body>
       <h1>{number}</h1>
       <p>Numéro attribué via enregistrement QR</p>
+      <p style="margin-top:50px; font-size:14px; color:#555;">
+        Systeme développé par Simon Guy, Directeur TI de la SRA
+      </p>
     </body>
     </html>
     """
@@ -100,7 +104,7 @@ def register():
 def manual_register():
     """
     Page d'assignation manuelle d'un numéro.
-    Sur POST, un nouveau numéro est attribué (et ajouté à la file) et affiché.
+    Sur POST, on attribue un numéro et on l'ajoute à la file.
     """
     if request.method == 'POST':
         if waiting_list:
@@ -114,6 +118,9 @@ def manual_register():
             <head><meta charset="utf-8"><title>Aucun numéro disponible</title></head>
             <body style="text-align:center; padding:50px;">
               <h1 style="color:red;">Plus aucun numéro disponible</h1>
+              <p style="margin-top:50px; font-size:14px; color:#555;">
+                Systeme développé par Simon Guy, Directeur TI de la SRA
+              </p>
             </body>
             </html>
             """, 404
@@ -130,7 +137,6 @@ def manual_register():
                     text-align: center;
                     margin: 0;
                     padding: 50px;
-                    background-color: #ffffff;
                 }}
                 h1 {{
                     font-size: 150px;
@@ -155,6 +161,9 @@ def manual_register():
             <p>Numéro attribué manuellement</p>
             <a href="/manual">Attribuer un autre numéro</a>
             <a href="/">Retour à l'accueil</a>
+            <p style="margin-top:50px; font-size:14px; color:#555;">
+              Systeme développé par Simon Guy, Directeur TI de la SRA
+            </p>
         </body>
         </html>
         """
@@ -171,7 +180,6 @@ def manual_register():
                     text-align: center; 
                     margin: 0; 
                     padding: 50px; 
-                    background-color: #ffffff;
                 }
                 h1 { 
                     font-size: 2em; 
@@ -205,11 +213,13 @@ def manual_register():
                 <button type="submit">Attribuer un numéro</button>
             </form>
             <a href="/">Retour à l'accueil</a>
+            <p style="margin-top:50px; font-size:14px; color:#555;">
+              Systeme développé par Simon Guy, Directeur TI de la SRA
+            </p>
         </body>
         </html>
         """
 
-# Enregistrement du blueprint
 app.register_blueprint(register_bp)
 
 # --- Routes principales ---
@@ -217,8 +227,7 @@ app.register_blueprint(register_bp)
 @app.route('/')
 def home():
     """
-    Page d'accueil sans images, avec des liens vers l'enregistrement par QR, l'assignation manuelle,
-    et vers l'affichage en direct des comptoirs et des numéros.
+    Page d'accueil, avec un lien vers l'affichage en direct.
     """
     liens = "".join(f'<li><a href="/counter/{i}">Comptoir {i}</a></li>' for i in range(1, 61))
     return f"""
@@ -276,6 +285,9 @@ def home():
           {liens}
         </ul>
       </div>
+      <p style="margin-top:50px; font-size:14px; color:#555;">
+        Systeme développé par Simon Guy, Directeur TI de la SRA
+      </p>
     </body>
     </html>
     """
@@ -283,7 +295,7 @@ def home():
 @app.route('/counter/<int:counter_id>', methods=['GET'])
 def counter_page(counter_id):
     """
-    Page dédiée à un comptoir sans images.
+    Page dédiée à un comptoir.
     """
     return f"""
     <!DOCTYPE html>
@@ -345,6 +357,9 @@ def counter_page(counter_id):
         <div id="result"></div>
         <p><a href="/">Retour à l'accueil</a></p>
       </div>
+      <p style="margin-top:50px; font-size:14px; color:#555;">
+        Systeme développé par Simon Guy, Directeur TI de la SRA
+      </p>
       <script>
         document.getElementById('callNextBtn').addEventListener('click', function() {{
           fetch('/next', {{
@@ -392,7 +407,8 @@ def next_client():
 @app.route('/display', methods=['GET'])
 def display():
     """
-    Page d'affichage en direct des comptoirs et de la file d'attente, avec un style moderne.
+    Page d'affichage en direct des comptoirs.
+    Le numéro est plus gros que le comptoir.
     """
     items = list(reversed(active_counters.items()))
     return f"""
@@ -440,14 +456,14 @@ def display():
           max-width: 300px;
           text-align: center;
         }}
-        .counter-card h3 {{
-          margin: 0;
-          font-size: 1.5em;
+        .counter-card .counter-name {{
+          font-size: 1em;
           color: #34495e;
+          margin: 0;
         }}
-        .counter-card p {{
-          font-size: 1.2em;
-          color: #2c3e50;
+        .counter-card .counter-number {{
+          font-size: 2em;
+          color: #e74c3c;
           margin: 10px 0 0;
         }}
         .queue-section {{
@@ -483,8 +499,8 @@ def display():
         <div class="counters-list">
           {"".join(f'''
           <div class="counter-card">
-            <h3>{counter}</h3>
-            <p>Numéro {number}</p>
+            <p class="counter-name">Comptoir {counter}</p>
+            <p class="counter-number">Numéro {number}</p>
           </div>
           ''' for counter, number in items)}
         </div>
@@ -492,8 +508,13 @@ def display():
           <h2>File d'attente des participants</h2>
           {"".join(f"<li>Numéro {number}</li>" for number in list(registered_queue)) if registered_queue else "<p>Aucun participant en attente.</p>"}
         </div>
-        <p style="text-align:center; margin-top: 20px;"><a href="/">Retour à l'accueil</a></p>
+        <p style="text-align:center; margin-top: 20px;">
+          <a href="/">Retour à l'accueil</a>
+        </p>
       </div>
+      <p style="text-align:center; margin-top:50px; font-size:14px; color:#555;">
+        Systeme développé par Simon Guy, Directeur TI de la SRA
+      </p>
       <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.min.js"></script>
       <script>
         var socket = io();
