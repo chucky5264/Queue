@@ -10,7 +10,7 @@ import qrcode, io, uuid
 # Génère un identifiant unique pour cette exécution de l'application.
 app_run_id = str(uuid.uuid4())
 
-# Configure Flask (nous ne faisons plus référence aux images, donc la partie static reste inchangée)
+# Configure Flask pour utiliser le dossier "sstatic" (même s'il n'est plus utilisé pour des images)
 app = Flask(__name__, static_folder='sstatic', static_url_path='/static')
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, async_mode='eventlet')
@@ -38,9 +38,9 @@ def generate_qr():
 @register_bp.route('/register', methods=['GET'])
 def register():
     """
-    Endpoint d'enregistrement par QR code.
-    Vérifie si la session contient déjà un numéro correspondant à la version actuelle de l'application.
-    Sinon, un nouveau numéro est attribué et ajouté à la file d'attente.
+    Endpoint d'enregistrement par QR.
+    Vérifie si la session contient déjà un numéro correspondant à l'exécution actuelle.
+    Sinon, attribue un nouveau numéro et l'ajoute à la file d'attente.
     """
     if session.get('app_run_id') == app_run_id and 'assigned_number' in session:
         number = session['assigned_number']
@@ -56,10 +56,7 @@ def register():
             return """
             <!DOCTYPE html>
             <html lang="fr">
-            <head>
-              <meta charset="utf-8">
-              <title>Aucun numéro disponible</title>
-            </head>
+            <head><meta charset="utf-8"><title>Aucun numéro disponible</title></head>
             <body style="text-align:center; padding:50px;">
               <h1 style="color:red;">Plus aucun numéro disponible</h1>
             </body>
@@ -103,8 +100,7 @@ def register():
 def manual_register():
     """
     Page d'assignation manuelle d'un numéro.
-    Lorsqu'un utilisateur clique sur le bouton, un nouveau numéro est attribué (et ajouté à la file)
-    et le numéro attribué est affiché.
+    Sur POST, un nouveau numéro est attribué (et ajouté à la file) et affiché.
     """
     if request.method == 'POST':
         if waiting_list:
@@ -115,10 +111,7 @@ def manual_register():
             return """
             <!DOCTYPE html>
             <html lang="fr">
-            <head>
-              <meta charset="utf-8">
-              <title>Aucun numéro disponible</title>
-            </head>
+            <head><meta charset="utf-8"><title>Aucun numéro disponible</title></head>
             <body style="text-align:center; padding:50px;">
               <h1 style="color:red;">Plus aucun numéro disponible</h1>
             </body>
@@ -216,15 +209,16 @@ def manual_register():
         </html>
         """
 
-# Enregistre le blueprint dans l'application
+# Enregistrement du blueprint
 app.register_blueprint(register_bp)
 
-# --- Routes principales de l'application ---
+# --- Routes principales ---
 
 @app.route('/')
 def home():
     """
-    Page d'accueil sans images, avec des liens vers l'enregistrement par QR et l'assignation manuelle.
+    Page d'accueil sans images, avec des liens vers l'enregistrement par QR, l'assignation manuelle,
+    et vers l'affichage en direct des comptoirs et des numéros.
     """
     liens = "".join(f'<li><a href="/counter/{i}">Comptoir {i}</a></li>' for i in range(1, 61))
     return f"""
@@ -276,6 +270,7 @@ def home():
         <p>Bienvenue ! Ce système vous permet de gérer une file d'attente et d'appeler le prochain numéro depuis n'importe quel comptoir.</p>
         <p><a href="/qr">Afficher le QR code pour s'enregistrer</a></p>
         <p><a href="/manual">Attribuer un numéro manuellement</a></p>
+        <p><a href="/display">Afficher l'affichage en direct des comptoirs et des numéros</a></p>
         <h2>Liste des Comptoirs</h2>
         <ul>
           {liens}
@@ -397,7 +392,7 @@ def next_client():
 @app.route('/display', methods=['GET'])
 def display():
     """
-    Page d'affichage en direct des comptoirs et de la file d'attente avec un style moderne.
+    Page d'affichage en direct des comptoirs et de la file d'attente, avec un style moderne.
     """
     items = list(reversed(active_counters.items()))
     return f"""
