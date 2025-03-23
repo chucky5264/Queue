@@ -8,27 +8,25 @@ from collections import deque, OrderedDict
 import qrcode, io, uuid
 
 # Génère un identifiant unique pour cette exécution de l'application.
-# À chaque redémarrage, cette valeur sera différente.
 app_run_id = str(uuid.uuid4())
 
-# Configure Flask pour utiliser le dossier "sstatic" pour les fichiers statiques
+# Configure Flask (nous ne faisons plus référence aux images, donc la partie static reste inchangée)
 app = Flask(__name__, static_folder='sstatic', static_url_path='/static')
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, async_mode='eventlet')
 
 # Variables globales partagées
 waiting_list = deque(range(1, 3001))      # Liste d'attente des numéros disponibles
-registered_queue = deque()               # File d'attente des participants inscrits via QR code
+registered_queue = deque()               # File d'attente des participants inscrits
 active_counters = OrderedDict()          # Dernier numéro appelé par chaque comptoir
 
-# --- Blueprint pour l'enregistrement via QR code ---
+# --- Blueprint pour l'enregistrement ---
 register_bp = Blueprint('register', __name__)
 
 @register_bp.route('/qr')
 def generate_qr():
     """
     Génère un QR code pointant vers l'endpoint /register.
-    Remplacez l'URL par celle de votre serveur (IP publique ou nom de domaine).
     """
     url = "http://147.93.40.205:5000/register"  # Adaptez l'URL selon votre environnement
     img = qrcode.make(url)
@@ -40,16 +38,10 @@ def generate_qr():
 @register_bp.route('/register', methods=['GET'])
 def register():
     """
-    Endpoint d'enregistrement.
-    Lorsqu'un utilisateur accède à cette page, on vérifie si sa session contient déjà un numéro
-    ET si cet enregistrement correspond à la version actuelle de l'application (app_run_id).
-    Si ce n'est pas le cas (par exemple, après un redémarrage de l'application),
-    un nouveau numéro lui est attribué.
+    Endpoint d'enregistrement par QR code.
+    Vérifie si la session contient déjà un numéro correspondant à la version actuelle de l'application.
+    Sinon, un nouveau numéro est attribué et ajouté à la file d'attente.
     """
-    # Pour cet exemple, on utilisera "ima.png" comme fond d'écran fixe.
-    background_image = "ima.png"
-    
-    # Vérifie si la session contient déjà un numéro et l'app_run_id actuel
     if session.get('app_run_id') == app_run_id and 'assigned_number' in session:
         number = session['assigned_number']
     else:
@@ -57,7 +49,7 @@ def register():
             number = waiting_list.popleft()
             registered_queue.append(number)
             session['assigned_number'] = number
-            session['app_run_id'] = app_run_id  # Stocke l'identifiant de cette exécution dans la session
+            session['app_run_id'] = app_run_id
             print("Nouveau participant enregistré : numéro", number)
             socketio.emit('update_queue', {'registered_queue': list(registered_queue)})
         else:
@@ -86,23 +78,13 @@ def register():
           text-align: center;
           margin: 0;
           padding: 50px;
-          background: url('/static/{background_image}') no-repeat center center fixed;
-          background-size: cover;
-          position: relative;
-        }}
-        /* Logo affiché en haut à gauche */
-        .logo {{
-          position: absolute;
-          top: 10px;
-          left: 10px;
-          width: 150px;
-          z-index: 999;
+          background-color: #ffffff;
         }}
         h1 {{
           font-size: 150px;
           margin-bottom: 20px;
           color: #2c3e50;
-          margin-top: 100px;
+          margin-top: 50px;
         }}
         p {{
           font-size: 30px;
@@ -111,12 +93,128 @@ def register():
       </style>
     </head>
     <body>
-      <img src="/static/images.png" alt="Logo" class="logo" />
       <h1>{number}</h1>
-      <p>Système de file d'attente développé par Simon Guy, Directeur TI</p>
+      <p>Numéro attribué via enregistrement QR</p>
     </body>
     </html>
     """
+
+@register_bp.route('/manual', methods=['GET', 'POST'])
+def manual_register():
+    """
+    Page d'assignation manuelle d'un numéro.
+    Lorsqu'un utilisateur clique sur le bouton, un nouveau numéro est attribué (et ajouté à la file)
+    et le numéro attribué est affiché.
+    """
+    if request.method == 'POST':
+        if waiting_list:
+            number = waiting_list.popleft()
+            registered_queue.append(number)
+            socketio.emit('update_queue', {'registered_queue': list(registered_queue)})
+        else:
+            return """
+            <!DOCTYPE html>
+            <html lang="fr">
+            <head>
+              <meta charset="utf-8">
+              <title>Aucun numéro disponible</title>
+            </head>
+            <body style="text-align:center; padding:50px;">
+              <h1 style="color:red;">Plus aucun numéro disponible</h1>
+            </body>
+            </html>
+            """, 404
+
+        return f"""
+        <!DOCTYPE html>
+        <html lang="fr">
+        <head>
+            <meta charset="utf-8">
+            <title>Assignation Manuelle</title>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    text-align: center;
+                    margin: 0;
+                    padding: 50px;
+                    background-color: #ffffff;
+                }}
+                h1 {{
+                    font-size: 150px;
+                    color: #2c3e50;
+                    margin-bottom: 20px;
+                }}
+                p {{
+                    font-size: 30px;
+                    color: #555;
+                }}
+                a {{
+                    display: block;
+                    margin-top: 20px;
+                    text-decoration: none;
+                    color: #2980b9;
+                    font-size: 20px;
+                }}
+            </style>
+        </head>
+        <body>
+            <h1>{number}</h1>
+            <p>Numéro attribué manuellement</p>
+            <a href="/manual">Attribuer un autre numéro</a>
+            <a href="/">Retour à l'accueil</a>
+        </body>
+        </html>
+        """
+    else:
+        return """
+        <!DOCTYPE html>
+        <html lang="fr">
+        <head>
+            <meta charset="utf-8">
+            <title>Assignation Manuelle</title>
+            <style>
+                body { 
+                    font-family: Arial, sans-serif; 
+                    text-align: center; 
+                    margin: 0; 
+                    padding: 50px; 
+                    background-color: #ffffff;
+                }
+                h1 { 
+                    font-size: 2em; 
+                    color: #2c3e50; 
+                    margin-bottom: 20px; 
+                }
+                button { 
+                    font-size: 1.5em; 
+                    padding: 10px 20px; 
+                    background: #2980b9; 
+                    color: #fff; 
+                    border: none; 
+                    border-radius: 4px; 
+                    cursor: pointer; 
+                }
+                button:hover { 
+                    background: #1f6390; 
+                }
+                a { 
+                    display: block; 
+                    margin-top: 20px; 
+                    text-decoration: none; 
+                    color: #2980b9; 
+                    font-size: 20px; 
+                }
+            </style>
+        </head>
+        <body>
+            <h1>Assignation Manuelle de Numéro</h1>
+            <form method="post">
+                <button type="submit">Attribuer un numéro</button>
+            </form>
+            <a href="/">Retour à l'accueil</a>
+        </body>
+        </html>
+        """
 
 # Enregistre le blueprint dans l'application
 app.register_blueprint(register_bp)
@@ -126,39 +224,31 @@ app.register_blueprint(register_bp)
 @app.route('/')
 def home():
     """
-    Page d'accueil avec un logo (images.png) et des liens vers les comptoirs.
+    Page d'accueil sans images, avec des liens vers l'enregistrement par QR et l'assignation manuelle.
     """
     liens = "".join(f'<li><a href="/counter/{i}">Comptoir {i}</a></li>' for i in range(1, 61))
     return f"""
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Accueil - Système de File d'Attente</title>
+      <title>Système de File d'Attente</title>
       <style>
         body {{
           font-family: Arial, sans-serif;
           margin: 0;
           padding: 20px;
-          background: #f9f9f9;
-          position: relative;
-        }}
-        .logo {{
-          position: absolute;
-          top: 10px;
-          left: 10px;
-          width: 200px;
-          z-index: 999;
+          background-color: #f9f9f9;
+          text-align: center;
         }}
         h1 {{
           background: #2c3e50;
           color: #ecf0f1;
           padding: 10px;
-          text-align: center;
-          margin-top: 0;
+          margin: 0;
         }}
         .container {{
           max-width: 800px;
-          margin: 80px auto 20px;
+          margin: 80px auto;
           background: #fff;
           padding: 20px;
           box-shadow: 0 0 10px rgba(0,0,0,0.1);
@@ -181,12 +271,11 @@ def home():
       </style>
     </head>
     <body>
-      <img src="/static/images.png" alt="Logo" class="logo" />
       <h1>Système de File d'Attente</h1>
       <div class="container">
         <p>Bienvenue ! Ce système vous permet de gérer une file d'attente et d'appeler le prochain numéro depuis n'importe quel comptoir.</p>
-        <p><a href="/display">Voir l'affichage en direct des comptoirs</a></p>
         <p><a href="/qr">Afficher le QR code pour s'enregistrer</a></p>
+        <p><a href="/manual">Attribuer un numéro manuellement</a></p>
         <h2>Liste des Comptoirs</h2>
         <ul>
           {liens}
@@ -199,7 +288,7 @@ def home():
 @app.route('/counter/<int:counter_id>', methods=['GET'])
 def counter_page(counter_id):
     """
-    Page dédiée à un comptoir, avec un logo (images.png) affiché en haut à gauche.
+    Page dédiée à un comptoir sans images.
     """
     return f"""
     <!DOCTYPE html>
@@ -211,26 +300,18 @@ def counter_page(counter_id):
           font-family: Arial, sans-serif;
           margin: 0;
           padding: 20px;
-          background: #f9f9f9;
-          position: relative;
-        }}
-        .logo {{
-          position: absolute;
-          top: 10px;
-          left: 10px;
-          width: 150px;
-          z-index: 999;
+          background-color: #f9f9f9;
+          text-align: center;
         }}
         h1 {{
           background: #2c3e50;
           color: #ecf0f1;
           padding: 10px;
-          text-align: center;
-          margin-top: 0;
+          margin: 0;
         }}
         .container {{
           max-width: 600px;
-          margin: 80px auto 20px;
+          margin: 80px auto;
           background: #fff;
           padding: 20px;
           box-shadow: 0 0 10px rgba(0,0,0,0.1);
@@ -262,7 +343,6 @@ def counter_page(counter_id):
       </style>
     </head>
     <body>
-      <img src="/static/images.png" alt="Logo" class="logo" />
       <h1>Comptoir {counter_id}</h1>
       <div class="container">
         <p>Cliquez sur le bouton ci-dessous pour appeler le prochain participant inscrit.</p>
@@ -317,8 +397,7 @@ def next_client():
 @app.route('/display', methods=['GET'])
 def display():
     """
-    Page d'affichage en direct des comptoirs avec un style moderne.
-    Affiche un logo (images.jpeg) en haut à gauche, une grille de cartes pour les derniers numéros appelés et la file d'attente.
+    Page d'affichage en direct des comptoirs et de la file d'attente avec un style moderne.
     """
     items = list(reversed(active_counters.items()))
     return f"""
@@ -329,7 +408,7 @@ def display():
       <style>
         body {{
           font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-          background: #f0f2f5;
+          background-color: #f0f2f5;
           margin: 0;
           padding: 20px;
         }}
@@ -339,13 +418,6 @@ def display():
           padding: 20px;
           text-align: center;
           font-size: 2em;
-          position: relative;
-        }}
-        .header img {{
-          position: absolute;
-          left: 20px;
-          top: 20px;
-          width: 150px;
         }}
         .container {{
           max-width: 1000px;
@@ -409,7 +481,6 @@ def display():
     </head>
     <body>
       <div class="header">
-        <img src="/static/images.jpeg" alt="Logo">
         Affichage en Direct des Comptoirs
       </div>
       <div class="container">
